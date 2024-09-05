@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 def fetch_mongo_data():
     username = 'root'
     password = 'qwe123'
-    host = '127.0.0.1'
+    host = '10.41.2.78'
     port = 27017
     client = MongoClient(f'mongodb://{username}:{password}@{host}:{port}/')
     db = client['project']
@@ -39,7 +39,7 @@ def fetch_mongo_data():
 # PostgreSQL 연결 설정
 def fetch_postgres_data():
     db_config = {
-        'host': "127.0.0.1",
+        'host': "10.41.2.78",
         'port': "5432",
         'user': "postgres",
         'pw': "qwe123",
@@ -62,7 +62,7 @@ def fetch_postgres_data():
 def fetch_label_math():
     username = 'root'
     password = 'qwe123'
-    host = '127.0.0.1'
+    host = '10.41.2.78'
     port = 27017
     client = MongoClient(f'mongodb://{username}:{password}@{host}:{port}/')
     db = client['project']
