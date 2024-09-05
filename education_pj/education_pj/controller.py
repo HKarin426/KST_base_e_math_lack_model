@@ -5,33 +5,20 @@ import numpy as np
 from data import fetch_mongo_data, fetch_postgres_data, fetch_label_math
 
 def get_merged_data():
+    # MongoDB에서 데이터 가져오기
     merged_df = fetch_mongo_data()
+
+    # PostgreSQL에서 label_math_ele 데이터 가져오기
+    label_math_ele = fetch_label_math()
+
+    # PostgreSQL에서 데이터 가져오기
     education_2022 = fetch_postgres_data()
-    label_math = fetch_label_math()
 
-    label_math['from_g'] = label_math['from_semester'].apply(lambda x: x.split('-')[0])
-    label_math['to_g'] = label_math['to_semester'].apply(lambda x: x.split('-')[0])
-
-    label_math_ele = label_math[
-        ~(
-            ((label_math['from_g'] == '고등') | (label_math['to_g'] == '고등')) |
-            ((label_math['from_g'] == '중등') & (label_math['to_g'] == '중등'))
-        )
-    ]
-
-    replacement_dict = {
-        '중등-중1-1학기': '중등-중7-1학기',
-        '중등-중2-2학기': '중등-중8-2학기',
-        '중등-중1-2학기': '중등-중7-2학기',
-        '중등-중2-1학기': '중등-중8-1학기',
-        '중등-중3-1학기': '중등-중9-1학기',
-        '중등-중3-2학기': '중등-중9-2학기'
-    }
-
-    label_math_ele.loc[label_math_ele['from_g'] == '중등', 'from_semester'] = label_math_ele['from_semester'].replace(replacement_dict)
-
-    label_math_ele['from_chapter_name'].fillna('', inplace=True)
-    label_math_ele['to_chapter_name'].fillna('', inplace=True)
+    if 'knowledgeTag' in merged_df.columns:
+        # knowledgeTag를 숫자로 변환
+        merged_df['knowledgeTag'] = pd.to_numeric(merged_df['knowledgeTag'], errors='coerce')
+    else:
+        print("MongoDB 데이터에서 'knowledgeTag' 열을 찾을 수 없습니다.")
 
     return merged_df, education_2022, label_math_ele
 
@@ -86,6 +73,7 @@ def analyze_student_performance(learner_id, df):
     correct_knowledge_tags = correct_df['knowledgeTag'].dropna()
     incorrect_knowledge_tags = incorrect_df['knowledgeTag'].dropna()
     return correct_knowledge_tags.tolist(), incorrect_knowledge_tags.tolist()
+
 
 def get_most_common_tag(tags_list):
     all_tags = [tag for sublist in tags_list for tag in sublist]
