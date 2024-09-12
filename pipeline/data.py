@@ -3,17 +3,6 @@ from pymongo import MongoClient
 from sqlalchemy import create_engine, text
 import logging
 
-# 로깅 설정
-logger = logging.getLogger(__name__)
-formatter = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-streamHandler = logging.StreamHandler()
-fileHandler = logging.FileHandler("server.log")
-streamHandler.setFormatter(formatter)
-fileHandler.setFormatter(formatter)
-logger.addHandler(streamHandler)
-logger.addHandler(fileHandler)
-logger.setLevel(logging.DEBUG)
-
 def load_qa_irt_theta_data():
     logger.info("MongoDB에서 QA, IRT, Theta 데이터를 로드합니다.")
     # MongoDB 연결
