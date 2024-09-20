@@ -1,9 +1,21 @@
 import pandas as pd
 from pymongo import MongoClient
 from sqlalchemy import create_engine, text
+import logging
 
-# DB Configuration
+# 로깅 설정
+logger = logging.getLogger(__name__)
+formatter = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+streamHandler = logging.StreamHandler()
+fileHandler = logging.FileHandler("server.log")
+streamHandler.setFormatter(formatter)
+fileHandler.setFormatter(formatter)
+logger.addHandler(streamHandler)
+logger.addHandler(fileHandler)
+logger.setLevel(logging.DEBUG)
+
 def load_qa_irt_theta_data():
+    logger.info("MongoDB에서 QA, IRT, Theta 데이터를 로드합니다.")
     # MongoDB 연결
     username = 'root'
     password = 'qwe123'
@@ -40,6 +52,8 @@ def load_qa_irt_theta_data():
     irt_df = pd.DataFrame(list(irt_collection.find({}, irt_fields)))
     theta_df = pd.DataFrame(list(theta_collection.find({}, theta_fields)))
 
+    logger.info(f"QA 데이터 크기: {qa_df.shape}, IRT 데이터 크기: {irt_df.shape}, Theta 데이터 크기: {theta_df.shape}")
+
     # Merge DataFrames
     qa_df = qa_df.set_index(['testID', 'assessmentItemID'])
     irt_df = irt_df.set_index(['testID', 'assessmentItemID'])
@@ -48,13 +62,17 @@ def load_qa_irt_theta_data():
     merged_df = pd.merge(qa_df, irt_df, left_index=True, right_index=True, how='left')
     merged_df = pd.merge(merged_df, theta_df, left_on=['testID', 'learnerID'], right_on=['testID', 'learnerID'], how='left').reset_index()
 
+    logger.info(f"병합된 데이터프레임 크기: {merged_df.shape}")
+
     # Select relevant columns
     merged_df = merged_df[['learnerID', 'answerCode', 'knowledgeTag', 'difficultyLevel', 'discriminationLevel', 'guessLevel', 'theta']]
     merged_df['knowledgeTag'] = pd.to_numeric(merged_df['knowledgeTag'], errors='coerce', downcast='integer')
 
+    logger.info("QA, IRT, Theta 데이터 로드 완료.")
     return merged_df
 
 def load_label_math_ele():
+    logger.info("PostgreSQL에서 Label Math Ele 데이터를 로드합니다.")
     db_config = {
         'host': "10.41.2.78",
         'port': "5432",
@@ -72,9 +90,11 @@ def load_label_math_ele():
     query = f"SELECT * FROM {db_config['table_name']}"
     label_math_ele = pd.read_sql(query, engine)
 
+    logger.info(f"Label Math Ele 데이터 크기: {label_math_ele.shape}")
     return label_math_ele
 
 def load_education_data():
+    logger.info("PostgreSQL에서 Education 데이터를 로드합니다.")
     db_config = {
         'host': "10.41.2.78",
         'port': "5432",
@@ -92,13 +112,17 @@ def load_education_data():
     query = f"SELECT * FROM {db_config['table_name']}"
     education_2022 = pd.read_sql(query, engine)
 
+    logger.info(f"Education 데이터 크기: {education_2022.shape}")
+
     # Clean the data
     education_2022 = education_2022.drop(columns=['Unnamed: 6'], errors='ignore')
     education_2022['계열화'] = education_2022['계열화'].fillna('정보 없음')
 
+    logger.info("Education 데이터 클린 완료.")
     return education_2022
 
 def process_merged_data():
+    logger.info("Merged 데이터를 처리합니다.")
     # Load data
     merged_df = load_qa_irt_theta_data()  # MongoDB 데이터 (qa, irt, theta)
     education_2022 = load_education_data()  # PostgreSQL 데이터 (education_2022)
@@ -114,6 +138,7 @@ def process_merged_data():
 
     # If there are no common values, exit the function
     if common_ids.sum() == 0:
+        logger.warning("knowledgeTag와 ID 사이에 공통 값이 없습니다. 소스 데이터를 확인하세요.")
         print("No common values between knowledgeTag and ID. Check the source data.")
         return merged_df
 
@@ -130,86 +155,9 @@ def process_merged_data():
     merged_df['theta'] = pd.to_numeric(merged_df['theta'], errors='coerce')
     merged_df['knowledgeTag'] = pd.to_numeric(merged_df['knowledgeTag'], errors='coerce', downcast='integer')
 
-
+    logger.info(f"Merged 데이터 최종 크기: {merged_df.shape}")
+    logger.info("Merged 데이터 처리 완료.")
     return merged_df
-
-# # PostgreSQL 연결 정보 설정
-# db_config = {
-#     'user': 'postgres',
-#     'password': 'qwe123',
-#     'host': '127.0.0.1',
-#     'port': '5432',
-#     'database': 'project'
-# }
-
-# # SQLAlchemy 엔진 생성
-# engine = create_engine(f"postgresql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}")
-
-# # 테이블 생성 SQL 쿼리
-# create_prerequisite_table = """
-# CREATE TABLE IF NOT EXISTS prerequisite_recommendations (
-#     learner_id VARCHAR(50),
-#     knowledgeTag INTEGER,
-#     선수학습_Chapter_Name VARCHAR(255),
-#     계열화 VARCHAR(255),
-#     영역 VARCHAR(255)
-# );
-# """
-
-# create_successor_table = """
-# CREATE TABLE IF NOT EXISTS successor_recommendations (
-#     learner_id VARCHAR(50),
-#     knowledgeTag INTEGER,
-#     후속학습_Chapter_Name VARCHAR(255),
-#     계열화 VARCHAR(255),
-#     영역 VARCHAR(255)
-# );
-# """
-
-# def create_table_if_not_exists(table_name, create_table_query):
-#     """테이블이 없으면 생성하는 함수"""
-#     with engine.connect() as conn:
-#         # 테이블 존재 여부 확인 쿼리
-#         check_table_exists_query = f"""
-#         SELECT EXISTS (
-#             SELECT FROM information_schema.tables 
-#             WHERE table_name = '{table_name}'
-#         );
-#         """
-#         result = conn.execute(text(check_table_exists_query)).scalar()
-#         # 테이블이 없으면 생성
-#         if not result:
-#             conn.execute(text(create_table_query))
-#             print(f"테이블 {table_name}이 생성되었습니다.")
-#         else:
-#             print(f"테이블 {table_name}이 이미 존재합니다.")
-
-# def insert_prerequisite_data(data):
-#     """선수학습 추천 데이터를 적재"""
-#     # 테이블 생성 확인 및 생성
-#     create_table_if_not_exists('prerequisite_recommendations', create_prerequisite_table)
-
-#     # 데이터 삽입
-#     insert_query = """
-#     INSERT INTO prerequisite_recommendations (learner_id, knowledgeTag, 선수학습_Chapter_Name, 계열화, 영역)
-#     VALUES (:learner_id, :knowledgeTag, :선수학습_Chapter_Name, :계열화, :영역);
-#     """
-#     with engine.connect() as conn:
-#         conn.execute(text(insert_query), data)
-
-# def insert_successor_data(data):
-#     """후속학습 추천 데이터를 적재"""
-#     # 테이블 생성 확인 및 생성
-#     create_table_if_not_exists('successor_recommendations', create_successor_table)
-
-#     # 데이터 삽입
-#     insert_query = """
-#     INSERT INTO successor_recommendations (learner_id, knowledgeTag, 후속학습_Chapter_Name, 계열화, 영역)
-#     VALUES (:learner_id, :knowledgeTag, :후속학습_Chapter_Name, :계열화, :영역);
-#     """
-#     with engine.connect() as conn:
-#         conn.execute(text(insert_query), data)
-
 
 # PostgreSQL 연결 정보 설정
 db_config = {
@@ -248,16 +196,18 @@ CREATE TABLE IF NOT EXISTS successor_recommendations_save (
 
 def create_table_if_not_exists(table_name, create_table_query):
     """테이블이 없으면 생성하는 함수"""
+    logger.info(f"테이블 {table_name} 생성 여부를 확인합니다.")
     with engine.connect() as conn:
         try:
             conn.execute(text(create_table_query))
             conn.execute(text("COMMIT;"))  # 커밋 명시적으로 수행
-            print(f"테이블 {table_name}이 생성되었습니다.")
+            logger.info(f"테이블 {table_name}이 생성되었습니다.")
         except Exception as e:
-            print(f"테이블 생성 중 오류가 발생했습니다: {e}")
+            logger.error(f"테이블 생성 중 오류가 발생했습니다: {e}")
 
 def insert_prerequisite_data(data):
     """선수학습 추천 데이터를 적재"""
+    logger.info(f"선수학습 추천 데이터를 삽입합니다: {data}")
     # 테이블 생성 확인 및 생성
     create_table_if_not_exists('prerequisite_recommendations_save', create_prerequisite_table)
 
@@ -273,14 +223,15 @@ def insert_prerequisite_data(data):
                 result = conn.execute(text(insert_query), data)
                 transaction.commit()  # 커밋 명시적으로 수행
                 if result.rowcount == 0:
-                    print(f"중복 데이터가 발견되어 저장되지 않았습니다: {data}")
+                    logger.warning(f"중복 데이터가 발견되어 저장되지 않았습니다: {data}")
         except IntegrityError as e:
-            print(f"중복 데이터로 인해 저장되지 않았습니다: {e}")
+            logger.error(f"중복 데이터로 인해 저장되지 않았습니다: {e}")
         except Exception as e:
-            print(f"데이터 삽입 중 오류가 발생했습니다: {e}")
+            logger.error(f"데이터 삽입 중 오류가 발생했습니다: {e}")
 
 def insert_successor_data(data):
     """후속학습 추천 데이터를 적재"""
+    logger.info(f"후속학습 추천 데이터를 삽입합니다: {data}")
     # 테이블 생성 확인 및 생성
     create_table_if_not_exists('successor_recommendations_save', create_successor_table)
 
@@ -296,14 +247,15 @@ def insert_successor_data(data):
                 result = conn.execute(text(insert_query), data)
                 transaction.commit()  # 커밋 명시적으로 수행
                 if result.rowcount == 0:
-                    print(f"중복 데이터가 발견되어 저장되지 않았습니다: {data}")
+                    logger.warning(f"중복 데이터가 발견되어 저장되지 않았습니다: {data}")
         except IntegrityError as e:
-            print(f"중복 데이터로 인해 저장되지 않았습니다: {e}")
+            logger.error(f"중복 데이터로 인해 저장되지 않았습니다: {e}")
         except Exception as e:
-            print(f"데이터 삽입 중 오류가 발생했습니다: {e}")
+            logger.error(f"데이터 삽입 중 오류가 발생했습니다: {e}")
 
 def check_table_exists(table_name):
     """테이블 존재 여부를 확인하는 함수"""
+    logger.info(f"테이블 {table_name}의 존재 여부를 확인합니다.")
     with engine.connect() as conn:
         check_table_exists_query = f"""
         SELECT EXISTS (
@@ -312,4 +264,5 @@ def check_table_exists(table_name):
         );
         """
         result = conn.execute(text(check_table_exists_query)).scalar()
+        logger.info(f"테이블 {table_name} 존재 여부: {result}")
         return result
